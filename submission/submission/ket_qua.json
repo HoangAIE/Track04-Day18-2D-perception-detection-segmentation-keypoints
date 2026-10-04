@@ -1,0 +1,74 @@
+{
+  "progress": {
+    "box_iou": "ok",
+    "nms": "ok",
+    "batched_nms": "ok",
+    "average_precision": "ok",
+    "mask_iou": "ok",
+    "polygon_to_mask": "ok",
+    "mask_to_yolo_seg": "ok",
+    "autolabel": "ok",
+    "oks": "ok",
+    "joint_angle": "ok",
+    "FLIP_IDX": "ok"
+  },
+  "latency": [
+    {
+      "Cấu hình": "one-to-many + NMS, conf 0.25",
+      "preprocess (ms)": 3.6,
+      "inference (ms)": 21.85,
+      "postprocess (ms)": 2.61,
+      "số box": 5
+    },
+    {
+      "Cấu hình": "one-to-many + NMS, conf 0.001",
+      "preprocess (ms)": 3.42,
+      "inference (ms)": 23.16,
+      "postprocess (ms)": 2.82,
+      "số box": 203
+    },
+    {
+      "Cấu hình": "one-to-one NMS-free, conf 0.25",
+      "preprocess (ms)": 3.07,
+      "inference (ms)": 23.56,
+      "postprocess (ms)": 0.96,
+      "số box": 5
+    },
+    {
+      "Cấu hình": "one-to-one NMS-free, conf 0.001",
+      "preprocess (ms)": 3.0,
+      "inference (ms)": 22.53,
+      "postprocess (ms)": 1.11,
+      "số box": 204
+    }
+  ],
+  "result_4b": {
+    "flip_idx": "giải phẫu",
+    "epochs": 40,
+    "imgsz": 640,
+    "Box mAP50-95": 0.9303488492063492,
+    "Pose mAP50": 0.995,
+    "Pose mAP50-95": 0.4573462529843696,
+    "train (phút)": 4.4
+  },
+  "result_4c": null,
+  "answers": {
+    "Q1": "(a) Có 6300 dự đoán thô (1 * 84 * 6300). Số dự đoán này ít hơn 8400 (khi ảnh là 640x640) vì tỉ lệ ảnh bus.jpg sau letterbox là 640x480 (hình chữ nhật dẹt hơn). Do diện tích ảnh nhỏ hơn nên số lượng ô lưới (grid cells) ở cả 3 tầng feature giảm xuống, kéo theo tổng số dự đoán thô giảm tương ứng.\n(b) Nhãn gốc đang ở quy ước xywh (góc trên-trái và kích thước), nhưng đã bị đọc nhầm thành cxcywh (tâm và kích thước). Khi coi xywh là cxcywh, góc trên-trái thực tế sẽ bị dịch chuyển sang phải và xuống dưới một khoảng đúng bằng một nửa kích thước chiều rộng và chiều cao của chính box đó.",
+    "Q2": "Nhìn vào bảng, cột thay đổi nhiều nhất là 'postprocess (ms)', đặc biệt rõ rệt ở mức conf cực thấp (conf = 0.001).\n\nGiải thích:\n- Khi conf thấp (như 0.001), số lượng ứng viên (proposal boxes) vượt qua ngưỡng lọc ban đầu cực kỳ nhiều (hàng ngàn box). Head one-to-many bắt buộc phải thực hiện thuật toán NMS trên toàn bộ lượng box khổng lồ này, dẫn đến postprocess tốn rất nhiều thời gian.\n- Khi cảnh đông, mật độ các box trùng lặp tăng vọt, độ phức tạp tính toán của NMS tăng phi tuyến tính theo số lượng box.\n- Trải nghiệm chạy trên CPU/NPU không hỗ trợ song song tốt như GPU sẽ làm nghẽn cổ chai Postprocess vì NMS là thuật toán tuần tự (greedy loop), trong khi việc triệt tiêu NMS giúp phân phối tính toán suy luận mượt mà hơn.",
+    "Q3": "(a) Với NMS ngưỡng 0.7, hai box có IoU 0.75 (> 0.7) sẽ bị coi là trùng lặp (duplicate) và một trong hai công nhân sẽ bị lọc bỏ (mất mát thông tin), dẫn đến đếm thiếu người.\n- Nếu TĂNG ngưỡng (ví dụ lên 0.9): Giảm bớt việc lọc nhầm các thực thể đứng sát nhau, nhưng dễ giữ lại nhiều box trùng lặp cho cùng một đối tượng (gây đếm thừa).\n- Nếu GIẢM ngưỡng (ví dụ xuống 0.5): Lọc trùng lặp rất mạnh, nhưng cực kỳ dễ triệt tiêu các đối tượng thực sự đứng gần và đè lên nhau (gây đếm thiếu).\n(b) YOLO26 vẫn train thêm head one-to-many vì head này cung cấp tín hiệu giám sát phong phú và dày đặc hơn trong quá trình lan truyền ngược (backpropagation), giúp backbone học được các đặc trưng biểu diễn mạnh mẽ hơn, từ đó cải thiện độ chính xác chung cho cả headone-to-one.",
+    "Q4": "(a) Đếm vùng liên thông trên bản đồ semantic dễ bị sai số lượng người thực tế vì:\n- Đếm thiếu (Under-counting): Khi hai hay nhiều người đứng quá sát nhau hoặc đè lên nhau, các pixel của họ sẽ liên kết tạo thành một vùng liên thông duy nhất.\n- Đếm thừa (Over-counting): Khi một người bị che khuất một phần (ví dụ bởi cột, xe buýt) khiến vùng pixel bị chia cắt làm nhiều phần rời rạc, hoặc do nhiễu phân loại tạo ra các đốm pixel nhỏ.\n- Panoptic Segmentation giải quyết triệt để việc này bằng cách kết hợp Semantic (phân loại pixel) và Instance (phân tách từng đối tượng rời rạc). Nó gán nhãn cho mỗi pixel không chỉ là class 'person' mà còn đi kèm với ID đối tượng cụ thể (ví dụ: person_1, person_2).\n\n(b) Bản đồ semantic gán xe buýt vào class 'train' (tàu hoả, chiếm 63% diện tích box). Model bị nhầm lẫn như vậy vì:\n- Xe buýt trong ảnh là loại xe buýt điện đô thị cỡ lớn, có màu sắc, các ô kính lớn và hình dáng vuông vức rất giống với một toa tàu điện (tram/train) chạy trong thành phố.\n- Dataset huấn luyện YOLO-sem (Cityscapes) có thể chứa nhiều phương tiện công cộng dạng tàu điện đô thị có đặc điểm trực quan tương tự, dẫn đến sự nhầm lẫn giữa bus và train ở mức độ pixel.",
+    "Q5": "(a) Sự khác biệt về biên mask của hai phương pháp:\n- Đối tượng LỚN: YOLO-seg (Prototype) cho biên mượt và sắc nét hơn vì các mask prototype được học trực tiếp ở độ phân giải của ảnh (hoặc chỉ giảm nhẹ 4x). Trong khi đó, Mask R-CNN cắt RoI và resize về 28x28 rồi nội suy ngược lại kích thước lớn, khiến biên đối tượng lớn bị răng cưa/mờ và mất chi tiết góc cạnh.\n- Đối tượng NHỎ: Mask R-CNN cho biên tốt hơn vì nó tập trung tài nguyên phân giải (đúng 28x28 pixel cục bộ) riêng cho vùng RoI nhỏ đó. YOLO-seg sử dụng 32 prototype dùng chung trên toàn bộ ảnh, các đối tượng quá nhỏ sẽ chiếm quá ít pixel trên bản đồ prototype toàn cục, dẫn đến mất chi tiết biên hoặc bị lem nhem do nhiễu từ các vùng khác.\n\n(b) Nếu thay Hungarian matching bằng phương pháp lấy Greedy \"mỗi mask YOLO chọn mask Mask R-CNN có IoU cao nhất\":\n- Lỗi trùng lặp (Many-to-One): Nhiều mask của YOLO-seg (ví dụ do phân đoạn thừa hoặc các mảnh vỡ nhỏ) sẽ cùng được ghép vào một mask duy nhất của Mask R-CNN nếu đó là mask có IoU tốt nhất với cả hai.\n- Bỏ sót đối tượng (Unmatched objects): Việc không ràng buộc ghép cặp 1-1 sẽ dẫn đến việc một số mask thực thể khác của Mask R-CNN không được ghép cặp tối ưu, làm sai lệch bảng thống kê đánh giá chéo giữa hai mô hình.",
+    "Q6": "(a) Điểm A và điểm B cho ra mask của cái gì:\n- Điểm A (ở tâm box): Cho ra mask phân đoạn đầy đủ của cả cơ thể người (áo khoác, quần, giày).\n- Điểm B (ở 80% chiều cao): Chỉ phân đoạn được một mảnh rất nhỏ (màu vàng ở dưới gấu quần/giày) do điểm B nằm quá lệch về phía dưới, vùng biên cường độ màu sắc thay đổi mạnh khiến SAM hiểu sai ý định phân đoạn cục bộ thay vì toàn bộ cơ thể.\n=> Khi gán nhãn tự động, prompt bằng BOX an toàn hơn nhiều vì nó bao trùm toàn bộ không gian giới hạn của vật thể, giúp SAM dễ dàng xác định được phạm vi tối đa và giảm thiểu việc trích xuất thiếu các bộ phận.\n\n(b) Khi nào nên dùng SAM trực tiếp lúc triển khai, khi nào chỉ dùng SAM để tạo nhãn rồi train YOLO26-seg nhỏ:\n- Dùng SAM trực tiếp: Khi yêu cầu độ chính xác cực cao, bài toán phân đoạn không giới hạn số lớp (Open-vocabulary), hoặc không có giới hạn khắt khe về phần cứng tính toán và thời gian thực (vì SAM cực kỳ nặng và chậm).\n- Dùng SAM tạo nhãn rồi train YOLO26-seg nhỏ: Khi cần triển khai hệ thống thời gian thực (Real-time) trên thiết bị biên (Edge devices/CPU/NPU) giới hạn tài nguyên và cần tốc độ suy luận nhanh.",
+    "Q7": "- Khi đặt KP_THR = -100 (không lọc theo logit), Keypoint R-CNN sẽ buộc phải lấy vị trí argmax của heatmap tương ứng cho các khớp ngoài khung hình (đầu gối, mắt cá chân). Vì các khớp này bị che khuất hoàn toàn, heatmap không có đỉnh rõ ràng và chứa đầy nhiễu, dẫn đến việc giải mã lấy argmax trả về các điểm ngẫu nhiên lộn xộn trong ảnh (ví dụ như bay ra giữa không trung hoặc bị co cụm lại).\n- Điều này chứng minh rằng việc giải mã heatmap đơn thuần bằng phép toán argmax rất nhạy cảm với các đối tượng bị che khuất hoặc nằm ngoài khung hình.\n- Vì vậy, mỗi keypoint cần phải đi kèm một điểm tin cậy (conf/logit) để bộ lọc có thể chủ động loại bỏ các điểm dự đoán sai lệch hoặc không có căn cứ thực tế trước khi đưa vào các thuật toán xử lý phía sau.",
+    "Q8": "- Từ đồ thị bên trái:\n  + Đối với người nhỏ (kích thước 40×80 px), chỉ cần sai số khoảng 7 pixel là OKS đã rơi xuống dưới 0.5.\n  + Đối với người lớn (kích thước 250×500 px), ngay cả khi sai số lên tới 30 pixel, chỉ số OKS vẫn giữ được ở mức cao trên 0.6 (chưa chạm mức 0.5).\n\n- Lý do sigma (σ) của mắt nhỏ hơn nhiều so với hông:\n  + Mắt là vùng cấu trúc cục bộ nhỏ, có ranh giới trực quan rất sắc nét và dễ định vị chính xác tuyệt đối. Do đó, dung sai cho phép đối với mắt cực kỳ khắt khe (chỉ lệch vài pixel là bị phạt nặng).\n  + Hông là khớp lớn, vùng cơ thể mềm có ranh giới giải phẫu linh hoạt, dễ bị thay đổi tùy theo trang phục và rất khó để gán nhãn trùng khít tuyệt đối giữa các lượt gán nhãn khác nhau. Vì vậy, dung sai cho phép đối với hông rộng hơn nhiều.\n\n- Ý nghĩa đối với camera cổng gắn trên cao:\n  + Khi người chỉ cao khoảng 80 pixel, kích thước đối tượng trong ảnh là cực kỳ nhỏ. Sai số chỉ cần lệch 2-3 pixel ở các vùng nhạy cảm như mắt/mũi sẽ ngay lập tức làm OKS sụt giảm nghiêm trọng.\n  + Do đó, hệ thống cần được thiết lập ngưỡng OKS mềm dẻo hơn hoặc phải tinh chỉnh bộ tham số sigma phù hợp với đặc thù góc nhìn từ trên cao để tránh việc đánh giá sai lệch hiệu năng của mô hình.",
+    "Q9": "(a) Các trường hợp lỗi của luật \"thân nghiêng > 60°\":\n\nBáo nhầm (False Positive): Khi người đang cúi xuống để nhặt đồ, buộc dây giày hoặc đang bò/ngồi bò trên đất để sửa máy móc, góc thân so với phương thẳng đứng sẽ vượt quá 60° dù họ không hề bị ngã.\nBỏ sót (False Negative): Khi người ngã ngửa tựa lưng vào tường hoặc ngã ngồi gục xuống góc khuất mà thân chỉ nghiêng nhẹ khoảng 30°-45° so với phương thẳng đứng.\n(b) Khi xoay ảnh 90°, model tìm được ít người hơn vì:\n\nCác đặc trưng học được của YOLO-pose phụ thuộc mạnh vào hướng định hướng đứng của cơ thể người (người luôn đứng thẳng trong đa số tập dữ liệu COCO). Khi xoay ảnh 90°, tư thế đứng thẳng bỗng trở thành nằm ngang, làm mất tính bất biến dịch chuyển/xoay của mạng tích chập thông thường, khiến bộ dò box và keypoint hoạt động kém đi nhiều.\n(c) Một hệ thống cảnh báo ngã thực sự cần thêm:\n\nChiều thông tin thời gian (Temporal tracking): Phân tích chuyển động qua nhiều khung hình liên tiếp để phát hiện sự thay đổi vận tốc đột ngột (đang đứng bỗng rơi tự do/ngã xuống nhanh).\nPhân tích trạng thái tĩnh kéo dài sau va chạm: Đảm bảo đối tượng nằm bất động sau khi ngã thay vì chỉ vô tình cúi xuống rồi đứng lên ngay.",
+    "Q10": "- Nếu giữ `flip_idx` đồng nhất, mAP trên tập val này SẼ KHÔNG GIẢM vì toàn bộ hổ ở cả tập train và val đều quay sang phải. Do không có sự thay đổi về hướng quay (symmetry inversion), mô hình không bị thử thách bởi các ảnh lật gương ngược hướng, nên lỗi định danh trái/phải không lộ ra trên tập validation bị lệch hướng này.\n- Khi triển khai thực tế (production), đây sẽ là một BUG THẬT SỰ khi hệ thống gặp những con hổ quay đầu sang trái hoặc khi ta kích hoạt tính năng lật ảnh ngẫu nhiên (horizontal flip augmentation) để huấn luyện sâu hơn. Khi đó, các khớp bên trái sẽ bị gán nhãn nhầm thành bên phải và ngược lại, làm hỏng hoàn toàn logic phân tích hướng di chuyển hoặc tư thế chuẩn xác của hổ.",
+    "Q11": "1. Kiểu lỗi thứ nhất: Che khuất cục bộ và chân sau đè lẫn nhau (Chân sau/Hông che nhau)\n   - Biểu hiện: Sai số ở các điểm khớp chân (`left_hind_hock`, `right_hind_hock`, `left_front_wrist`) rất lớn do khi hổ di chuyển, các chân nọ che khuất chân kia, khiến mô hình dễ dự đoán nhầm điểm khuất vào chân đối diện hoặc đoán lệch ra ngoài vùng ảnh.\n   - Giải pháp khắc phục: Bổ sung thêm kỹ thuật augmentation dạng CoarseDropout hoặc Random Erasing (che khuất ngẫu nhiên một phần cơ thể) lúc huấn luyện để model học cách suy luận vị trí khớp khuất dựa trên cấu trúc các khớp xung quanh. Đồng thời có thể nâng ngưỡng tin cậy dự đoán (keypoint confidence threshold) để ẩn các khớp bị che khuất hoàn toàn.\n\n2. Kiểu lỗi thứ hai: Vật thể bị cắt ranh giới biên ảnh hoặc tỉ lệ nhỏ (Hổ bị cắt ở mép ảnh)\n   - Biểu hiện: Khi hổ tiến quá sát ranh giới ảnh khiến phần đầu (`nose`, `head`) hoặc phần đuôi bị cắt đứt mất một phần lớn, mô hình dự đoán sai lệch hoàn toàn cấu trúc xương do thiếu các đặc trưng trực quan của bộ phận tương ứng.\n   - Giải pháp khắc phục: Áp dụng Augmentation như Random Crop, Translation/Shift với cường độ lớn hơn để làm phong phú tập dữ liệu đầu vào. Đồng thời, thu thập thêm ảnh đa dạng về góc chụp của hổ ở các rìa biên camera để mô hình quen dần với các trường hợp bị mất một phần đặc trưng giải phẫu.",
+    "Q12": "- Việc dùng chung sigma = 1/12 (khoảng 0.083) cho toàn bộ các điểm từ mũi hổ cho đến gốc đuôi là KHÔNG HỢP LÝ. Trên cơ thể động vật thực tế, các điểm như mũi (`nose`) hay mắt/tai có ranh giới cấu trúc nhỏ và đặc trưng cục bộ rất rõ, nên biên độ sai số chấp nhận được phải cực kỳ khắt khe (sigma nhỏ). Ngược lại, các khớp lớn hoặc vùng mềm như gốc đuôi (`tail_base`), hông (`shoulder`, `hind_hock`) có ranh giới giải phẫu linh hoạt, khó định vị chính xác tuyệt đối ngay cả đối với con người khi gán nhãn, nên biên độ dung sai cần rộng hơn (sigma lớn hơn).\n- Cách ước lượng sigma cho một dataset custom khoa học:\n  1. Thuê hoặc mời nhiều chuyên gia (ví dụ 3-5 người) gán nhãn độc lập trên cùng một tập ảnh mẫu.\n  2. Tính toán độ lệch chuẩn (standard deviation) của khoảng cách giữa các lượt gán nhãn khác nhau cho từng keypoint so với kích thước (đường chéo hoặc căn diện tích) của hộp bao (bounding box).\n  3. Chuẩn hóa độ lệch chuẩn này để thu được bộ giá trị sigma đặc trưng riêng cho từng điểm khớp, tương tự như cách COCO đã thiết lập cho khung xương người."
+  },
+  "env": {
+    "device": "cuda",
+    "torch": "2.11.0+cu130",
+    "ultralytics": "8.4.171"
+  }
+}
